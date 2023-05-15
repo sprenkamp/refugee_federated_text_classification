@@ -10,8 +10,8 @@ models/*
 *.ipynb_checkpoints/*
 data/*
 #exceptions
-**data/geodata/**
-!/data/stopwords/*
+!models/**/*.yaml
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
