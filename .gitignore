@@ -5,12 +5,12 @@ plots/*
 .env
 *.session
 *.session-journal
-#models/*
+models/*
 .vscode/*
 *.ipynb_checkpoints/*
 data/*
 #exceptions
-#!models/**/*.yaml
+!models/**/*.yaml
 
 
 # Byte-compiled / optimized / DLL files
