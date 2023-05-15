@@ -75,20 +75,8 @@ class BertTextClassifierTrain:
         self.df = pd.read_csv(df_path)
         self.df = self.df[["messageText", "cluster"]]
         self.df.columns = ["text", "category"]
-        print(self.model_config['labels'].values())
         self.df = self.df[self.df["category"].isin(self.model_config['labels'].values())]
-        self.df = self.df[self.df.text.str.len() < 512]
-        tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-        problematic_texts = []
-
-        for text in self.df.text:  # assume `texts` is your list of texts
-            encoded = tokenizer.encode(text, truncation=False)
-            if max(encoded) >= 28996:
-                problematic_texts.append(text)
-        print("Problem", problematic_texts)
-        # print out the problematic texts
-        for text in problematic_texts:
-            print("Problem", text)
+        self.df = self.df[self.df.text.str.len() < 512][:1000]
         print("Data loaded, using {} samples".format(len(self.df)))
         self.df_train, self.df_test = train_test_split(self.df, test_size=0.2, random_state=42)
         self.df_val, self.df_test = train_test_split(self.df_test, test_size=0.5, random_state=42)
@@ -132,7 +120,7 @@ class BertTextClassifierTrain:
         val_dataset = tf.data.Dataset.from_tensor_slices((val_inputs, val_labels)).batch(self.model_config['batch_size'])
 
         optimizer = Adam(learning_rate=self.model_config['lr'])
-        loss = SparseCategoricalCrossentropy(from_logits=True)
+        loss = SparseCategoricalCrossentropy(from_logits=False)
         self.model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
         history = self.model.fit(
