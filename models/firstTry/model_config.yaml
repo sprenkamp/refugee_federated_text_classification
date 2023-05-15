@@ -1,0 +1,17 @@
+labels:
+  label_1: 0
+  label_2: 1
+  label_3: 2
+  label_4: 3
+  label_5: 4
+  labek_6: 5
+  label_7: 6
+  label_8: 7
+  label_9: 8
+  label_10: 9
+
+
+batch_size: 32
+lr: 0.0001
+epochs: 10
+dropout: 0.1
