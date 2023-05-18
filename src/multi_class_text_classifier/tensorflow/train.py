@@ -15,19 +15,6 @@ from bert_text_classifier import BertTextClassifier  # your TensorFlow model scr
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-cased')  # load pretrained tokenizer model
 
-class TFDataGenerator(Dataset):
-    def __init__(self, texts, labels):
-        self.texts = [tokenizer(text, 
-                               padding='max_length', max_length = 512, truncation=True,
-                                return_tensors="tf") for text in texts]
-        self.labels = labels
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        return self.texts[idx], self.labels[idx]
-
 class CustomDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, texts, labels, tokenizer, max_length, batch_size):
         self.texts = texts
@@ -134,7 +121,7 @@ class BertTextClassifierTrain:
         self.model.save(os.path.dirname(os.path.abspath(self.config_path))+"/model")
 
     def evaluate(self):
-        test = TFDataGenerator(self.df_test['text'].tolist(), self.df_test['category'].tolist())
+        test = CustomDataGenerator(self.df_test['text'].tolist(), self.df_test['category'].tolist())
         results = self.model.evaluate(test, verbose=0)
         print(f'Test Accuracy: {results[1]:.3f}')
     
