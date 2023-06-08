@@ -4,18 +4,28 @@ from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.model_selection import train_test_split
 
+TORCH_USE_CUDA_DSA=1
+
+
+# Load df from CSV file
+data="df_testing"
+df = pd.read_csv(f'data/{data}.csv', on_bad_lines="skip")
+# df = df[df["federation_level"] == "Germany"]
+if data=='df_testing':
+    max_length = 512
+    df = df[df['x'].str.len() < max_length].sample(500)
+print("class distribution", df.y.value_counts())
+
 # Define the BERT model
 model_name = 'bert-base-uncased'
-num_labels = 3  # Number of classes: medical_info, transportation, asylum
-tokenizer = BertTokenizer.from_pretrained(model_name)
-model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
 
-# Load data from CSV file
-data = pd.read_csv('models/firstTry/df_dummy.csv', on_bad_lines="skip")
-print("class distribution", data.y.value_counts())
+# model_name = 'bert-base-'
+num_labels = len(df.y.unique()) 
+tokenizer = BertTokenizer.from_pretrained(model_name)
+model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels) # NOTE num_labels need to start at 0 important for labelling
 
 # Split the data into train, validation, and test sets
-train_data, test_data = train_test_split(data, test_size=0.4, random_state=42)
+train_data, test_data = train_test_split(df, test_size=0.4, random_state=42)
 val_data, test_data = train_test_split(test_data, test_size=0.5, random_state=42)
 
 # Tokenize and encode the text data for train, validation, and test sets
@@ -63,6 +73,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
 # Fine-tuning loop
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(device)
 model.to(device)
 
 best_val_loss = float('inf')
@@ -176,5 +187,5 @@ print(f'Test Loss: {avg_test_loss}')
 print(f'Test Accuracy: {accuracy}')
 
 # Save the fine-tuned model
-model.save_pretrained('fine_tuned_model')
-tokenizer.save_pretrained('fine_tuned_model')
+model.save_pretrained(f'models/{data}')
+# stokenizer.save_pretrained('models/dummy_centralized')

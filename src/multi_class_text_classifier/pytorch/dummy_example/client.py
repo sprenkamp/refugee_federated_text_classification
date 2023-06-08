@@ -10,37 +10,68 @@ from transformers import BertTokenizer, BertForSequenceClassification, AdamW
 from torch import nn
 from torch.optim import Adam
 from sklearn.metrics import precision_score, recall_score, f1_score
+import grpc
+from collections import OrderedDict
 
-# Define the PyTorch model and optimizer
-num_labels = 3  # Number of classes: medical_info, transportation, asylum
-model = BertForSequenceClassification.from_pretrained('fine_tuned_model', num_labels=num_labels)
-optimizer = AdamW(model.parameters(), lr=2e-5)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model.to(device)
+# Set the maximum message size (e.g., 1 GB)
+max_message_size = 1024 * 1024 * 1024
+channel = grpc.insecure_channel('127.0.0.1:8080', options=[
+    ('grpc.max_receive_message_length', max_message_size),
+    ('grpc.max_send_message_length', max_message_size)
+])
+
+# max_message_length = 1024 * 1024 * 1024  # 1 GB
+# server = grpc.server(
+#     futures.ThreadPoolExecutor(max_workers=10),
+#     options=[
+#         ('grpc.max_send_message_length', max_message_length),
+#         ('grpc.max_receive_message_length', max_message_length),
+#     ],
+# )
 
 
 # Define a class that inherits from the flwr.client.NumPyClient class
 class PyTorchClient(fl.client.NumPyClient):
     def __init__(self, country):
-        self.load_data(country=country)    
+        self.country = country
+        self.load_and_preproccess_data()    
+        num_labels = 3  # Number of classes: medical_info, transportation, asylum
+        self.model = BertForSequenceClassification.from_pretrained('bert-base-multilingual-uncased', num_labels=num_labels)
+        self.optimizer = AdamW(self.model.parameters(), lr=2e-5)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model.to(self.device)
+
+
+    # def get_parameters(self, config=None):
+    #     # Detach each parameter tensor before converting to a numpy array
+    #     return [np.asarray(p.cpu().detach(), dtype='float32') for p in self.model.parameters()]
     
-    def get_parameters(self):
-        return [val.cpu().numpy() for val in model.parameters()]
+    def get_parameters(self, config):
+        return [val.cpu().numpy() for _, val in self.model.state_dict().items()]
 
     def set_parameters(self, parameters):
-        parameters = [torch.Tensor(val) for val in parameters]
-        model.load_state_dict(zip(model.state_dict().keys(), parameters))
-        optimizer.zero_grad()
+        params_dict = zip(self.model.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+        self.model.load_state_dict(state_dict, strict=True)
 
-    def load_and_preproccess_data(self, country):
+    # def set_parameters(self, parameters):
+    #     params_dict = zip(self.model.state_dict().keys(), parameters)
+    #     # print(params_dict.shape)
+    #     state_dict = {k: torch.Tensor(v) for k, v in params_dict}
+    #     # print(state_dict.shape)
+    #     for param_tensor in self.model.state_dict():    
+    #         print(param_tensor, "\t", self.model.state_dict()[param_tensor].size())
+    #     self.model.load_state_dict(state_dict, strict=True)
+
+    def load_and_preproccess_data(self):
         # Load data from CSV file
-        df = pd.read_csv('models/firstTry/df_dummy.csv', on_bad_lines="skip")
-        df = df[self.df.x.str.len() < 512]
-        df = df[self.df["federation_level"] == country]
-        print("Data loaded, using {} samples from {}".format(len(self.df),country))
+        self.df = pd.read_csv('data/df_dummy.csv', on_bad_lines="skip")
+        self.df = self.df[self.df.x.str.len() < 512]
+        self.df = self.df[self.df["federation_level"] == self.country]
+        print("Data loaded, using {} samples from {}".format(len(self.df),self.country))
 
         # Split the df into train and validation sets
-        train_data, val_data = train_test_split(df, test_size=0.2, random_state=42)
+        train_data, val_data = train_test_split(self.df, test_size=0.2, random_state=42)
 
         # Tokenize and encode the text data for train and validation sets
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -60,12 +91,12 @@ class PyTorchClient(fl.client.NumPyClient):
         )
 
         # Convert labels to tensors for train and validation sets
-        train_labels = torch.tensor(train_data['y'].tolist())
-        val_labels = torch.tensor(val_data['y'].tolist())
+        self.train_labels = torch.tensor(train_data['y'].tolist())
+        self.val_labels = torch.tensor(val_data['y'].tolist())
 
         # Create TensorDatasets for train and validation sets
-        train_dataset = TensorDataset(train_inputs['input_ids'], train_inputs['attention_mask'], train_labels)
-        val_dataset = TensorDataset(val_inputs['input_ids'], val_inputs['attention_mask'], val_labels)
+        train_dataset = TensorDataset(train_inputs['input_ids'], train_inputs['attention_mask'], self.train_labels)
+        val_dataset = TensorDataset(val_inputs['input_ids'], val_inputs['attention_mask'], self.val_labels)
 
         # Define batch size and create DataLoaders for train and validation sets
         batch_size = 8
@@ -75,51 +106,59 @@ class PyTorchClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         self.set_parameters(parameters)
 
-        # Perform local training on the client
-        total_loss = 0
-        model.train()
+        num_epochs = 3  # Set the number of epochs
 
-        for batch in self.train_dataloader:
-            input_ids, attention_mask, batch_labels = batch
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
-            batch_labels = batch_labels.to(device)
+        for epoch in range(num_epochs):
+            total_loss = 0
+            self.model.train()
 
-            optimizer.zero_grad()
+            for batch in self.train_dataloader:
+                input_ids, attention_mask, batch_labels = batch
+                input_ids = input_ids.to(self.device)
+                attention_mask = attention_mask.to(self.device)
+                batch_labels = batch_labels.to(self.device)
 
-            outputs = model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                labels=batch_labels
-            )
+                self.optimizer.zero_grad()
 
-            loss = outputs.loss
-            total_loss += loss.item()
+                outputs = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    labels=batch_labels
+                )
 
-            loss.backward()
-            optimizer.step()
+                loss = outputs.loss
+                total_loss += loss.item()
 
-        avg_loss = total_loss / len(self.train_dataloader)
+                loss.backward()
+                self.optimizer.step()
+
+            avg_loss = total_loss / len(self.train_dataloader)
+            print(f"Country {self.country} Epoch {epoch+1} - Average Loss: {avg_loss}")
+
+            loss, _, metrics = self.evaluate(self.get_parameters(config), config)
 
         # Return the updated parameters and the number of training examples
-        return self.get_parameters(config={}), len(self.train_dataloader.dataset), {}
+        return self.get_parameters(config={}), len(self.train_dataloader.dataset), metrics
+
     
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
 
         # Perform local evaluation on the client
-        model.eval()
+        self.model.eval()
         total_loss = 0
         total_correct = 0
+
+        predicted_labels = []
 
         with torch.no_grad():
             for batch in self.val_dataloader:
                 input_ids, attention_mask, batch_labels = batch
-                input_ids = input_ids.to(device)
-                attention_mask = attention_mask.to(device)
-                batch_labels = batch_labels.to(device)
+                input_ids = input_ids.to(self.device)
+                attention_mask = attention_mask.to(self.device)
+                batch_labels = batch_labels.to(self.device)
 
-                outputs = model(
+                outputs = self.model(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     labels=batch_labels
@@ -131,18 +170,33 @@ class PyTorchClient(fl.client.NumPyClient):
                 total_loss += loss.item()
 
                 # Calculate the number of correct predictions
-                _, predicted_labels = torch.max(logits, dim=1)
-                total_correct += torch.sum(predicted_labels == batch_labels).item()
+                _, batch_predicted_labels = torch.max(logits, dim=1)
+                total_correct += torch.sum(batch_predicted_labels == batch_labels).item()
+
+                predicted_labels.extend(batch_predicted_labels.cpu().tolist())
 
         avg_loss = total_loss / len(self.val_dataloader)
         accuracy = total_correct / len(self.val_dataloader.dataset)
 
-        # Return the evaluation result
-        return float(loss), len(self.val_dataloader.dataset), {"accuracy": float(accuracy)}
+        # Calculate additional metrics
+        precision = precision_score(self.val_labels, predicted_labels, average='macro')
+        recall = recall_score(self.val_labels, predicted_labels, average='macro')
+        f1 = f1_score(self.val_labels, predicted_labels, average='macro')
 
-# Create an instance of the PyTorchClient class
-client = PyTorchClient()
+        metrics = {
+            'loss': loss.item(),
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1_score': f1
+        }
+
+        # Return the evaluation result
+        return float(loss), len(self.val_dataloader.dataset), metrics
+
+# # Create an instance of the PyTorchClient class
+# client = PyTorchClient()
 
 # Start the client and connect it to the Flower server
-fl.client.start_numpy_client(server_address="127.0.0.1:8080", client=PyTorchClient(country=sys.argv[1], num_labels=int(sys.argv[2])))
+fl.client.start_numpy_client(server_address="127.0.0.1:8080", client=PyTorchClient(country=sys.argv[1]), grpc_max_message_length=1438900533)
 
