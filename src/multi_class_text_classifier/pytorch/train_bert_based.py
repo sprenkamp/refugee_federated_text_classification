@@ -9,7 +9,7 @@ TORCH_USE_CUDA_DSA=1
 
 
 # Load df from CSV file
-data="df_gpt_output"
+data="df_shuffled_sven"
 df = pd.read_csv(f'data/{data}.csv', on_bad_lines="skip")
 # df = df[df["federation_level"] == "Germany"]
 if data=='df_testing':
@@ -27,7 +27,15 @@ if data=='df_gpt_output':
     df['y_gpt_pred_str'] = df['y_gpt_pred_str'].apply(lambda x: x.strip())
     df['y'] = df['y_gpt_pred_str'].map(new_class_dict)
     df = df.dropna(subset=['y'])
+
+if data=='df_shuffled_sven':
+    print(df.head())
+    max_length = 512
+    df = df[df['x'].str.len() < max_length]
+    df = df[df['y']!=-1]
+    df = df.dropna(subset=['y'])
 print("class distribution", type(df.y.iloc[0]), df.y.value_counts())
+
 
 # Define the BERT model
 model_name = 'bert-base-multilingual-uncased'

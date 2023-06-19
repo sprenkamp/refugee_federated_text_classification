@@ -35,10 +35,11 @@ class PyTorchClient(fl.client.NumPyClient):
     def __init__(self, country):
         self.country = country
         self.load_and_preproccess_data()    
-        num_labels = 3  # Number of classes: medical_info, transportation, asylum
+        num_labels = 5  # Number of classes: medical_info, transportation, asylum
         self.model = BertForSequenceClassification.from_pretrained('bert-base-multilingual-uncased', num_labels=num_labels)
         self.optimizer = AdamW(self.model.parameters(), lr=2e-5)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
         self.model.to(self.device)
 
 
@@ -65,7 +66,7 @@ class PyTorchClient(fl.client.NumPyClient):
 
     def load_and_preproccess_data(self):
         # Load data from CSV file
-        self.df = pd.read_csv('data/df_dummy.csv', on_bad_lines="skip")
+        self.df = pd.read_csv('data/df_shuffled_sven.csv', on_bad_lines="skip")
         self.df = self.df[self.df.x.str.len() < 512]
         self.df = self.df[self.df["federation_level"] == self.country]
         print("Data loaded, using {} samples from {}".format(len(self.df),self.country))

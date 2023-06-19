@@ -3,8 +3,9 @@ import pandas as pd
 import os
 from multiprocessing.pool import ThreadPool
 
-df = pd.read_csv('data/df_dummy.csv', on_bad_lines="skip")
+df = pd.read_csv('data/df_shuffled_sven.csv', on_bad_lines="skip")
 countries = df.federation_level.unique()
+countries = ["France", "Germany", "Spain"]
 # num_labels = len(df['y'].unique())  # Number of unique labels in the 'y' column
 def run_client(ids):
     def async_client(_id):
