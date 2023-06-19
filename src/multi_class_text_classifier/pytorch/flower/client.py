@@ -36,11 +36,13 @@ class PyTorchClient(fl.client.NumPyClient):
         self.country = country
         self.load_and_preproccess_data()    
         num_labels = 5  # Number of classes: medical_info, transportation, asylum
-        self.model = BertForSequenceClassification.from_pretrained('bert-base-multilingual-uncased', num_labels=num_labels)
+        self.model = BertForSequenceClassification.from_pretrained('distilbert-base-multilingual-cased', num_labels=num_labels)
         self.optimizer = AdamW(self.model.parameters(), lr=2e-5)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+        # self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
         self.model.to(self.device)
+        # print(self.device)
+        
 
 
     # def get_parameters(self, config=None):
@@ -69,6 +71,7 @@ class PyTorchClient(fl.client.NumPyClient):
         self.df = pd.read_csv('data/df_shuffled_sven.csv', on_bad_lines="skip")
         self.df = self.df[self.df.x.str.len() < 512]
         self.df = self.df[self.df["federation_level"] == self.country]
+        # print(self.device)
         print("Data loaded, using {} samples from {}".format(len(self.df),self.country))
 
         # Split the df into train and validation sets
@@ -100,7 +103,7 @@ class PyTorchClient(fl.client.NumPyClient):
         val_dataset = TensorDataset(val_inputs['input_ids'], val_inputs['attention_mask'], self.val_labels)
 
         # Define batch size and create DataLoaders for train and validation sets
-        batch_size = 8
+        batch_size = 4
         self.train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         self.val_dataloader = DataLoader(val_dataset, batch_size=batch_size)
 
@@ -180,7 +183,7 @@ class PyTorchClient(fl.client.NumPyClient):
         accuracy = total_correct / len(self.val_dataloader.dataset)
 
         # Calculate additional metrics
-        precision = precision_score(self.val_labels, predicted_labels, average='macro')
+        precision = precision_score(self.val_labels, predicted_labels, average='macro', zero_division=1)
         recall = recall_score(self.val_labels, predicted_labels, average='macro')
         f1 = f1_score(self.val_labels, predicted_labels, average='macro')
 

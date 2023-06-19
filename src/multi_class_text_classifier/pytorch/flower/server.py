@@ -63,11 +63,11 @@ def agg_metrics_val(metrics: List[Tuple[int, Metrics]]) -> Metrics:
 
 # Start Flower server
 
-n_rounds = 3
+n_rounds = 10
 # fl_strategy_FedAvg = fl.server.strategy.FedAvg(
 #     # fit_metrics_aggregation_fn=agg_metrics_train, 
 #     evaluate_metrics_aggregation_fn=agg_metrics_val)
-fl_strategy_FedAvg = fl.server.strategy.FedAvg(fraction_fit=0.5,  # Sample 100% of available clients for training        
+fl_strategy_FedAvg = fl.server.strategy.FedAvg(fraction_fit=0.1,  # Sample 100% of available clients for training        
                                     # fraction_eval=1.0,  # Sample 100% of available clients for evaluation        
                                     min_fit_clients=2,  # Never sample less than 10 clients for training       
                                     min_evaluate_clients=2,  # Never sample less than 10 clients for evaluation        
@@ -77,10 +77,24 @@ fl_strategy_FedAvg = fl.server.strategy.FedAvg(fraction_fit=0.5,  # Sample 100% 
                                     )
 fl_strategy = DPFedAvgFixed(
     num_sampled_clients=2,
-    noise_multiplier=0.5,
+    noise_multiplier=1,
     clip_norm = 2,
     strategy=fl_strategy_FedAvg
     )
-result = fl.server.start_server(server_address="127.0.0.1:8080", strategy=fl_strategy, config=fl.server.ServerConfig(num_rounds=n_rounds), grpc_max_message_length=1438900533)
+result = fl.server.start_server(server_address="127.0.0.1:8080", 
+                                strategy=fl_strategy_FedAvg, 
+                                config=fl.server.ServerConfig(num_rounds=n_rounds), 
+                                grpc_max_message_length=1438900533)
 
+# client_resources = None
+# if DEVICE.type == "cuda":
+#     client_resources = {"num_gpus": 1}
 
+# # Start simulation
+# fl.simulation.start_simulation(
+#     client_fn=client_fn,
+#     num_clients=NUM_CLIENTS,
+#     config=fl.server.ServerConfig(num_rounds=5),
+#     strategy=fl_strategy_FedAvg,
+#     client_resources=client_resources,
+# )
